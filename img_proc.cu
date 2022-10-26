@@ -11,25 +11,32 @@
 using namespace std;
 
 __global__ void colorToGrey(unsigned char *Pout, unsigned char *Pin, int width,
-                            int height)
+                            int height, int channels)
 {
     // Pout and Pin point to 1 dimensional array
-    int Col = (threadIdx.x + blockIdx.x * blockDim.x) * CHANNEL_NUM;
-    int Row = (threadIdx.y + blockIdx.y * blockDim.y) * CHANNEL_NUM;
-    // get 1D coordinate for the grayscale image
-        int greyOffset = (Row * width) + Col;
-        int rgb = (Row * width) + Col;
-        // one can think of the RGB image having
-        // CHANNEL times columns than the grayscale image
-        // channel is 3
-        // those indexes help to access to the correct cell for the pixel
-        unsigned char r = Pin[rgb];     // red value for pixel
-        unsigned char g = Pin[rgb+ 1]; // green value for pixel
-        unsigned char b = Pin[rgb+ 2]; // blue value for pixel
-        // perform the rescaling and store it
-        // We multiply by floating point constants
-        Pout[greyOffset] = 0.21 * r + 0.71 * g + 0.07 * b;
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+
+    int size = width * height * channels;
+    // for (int i = 0; i < size; i+=channels){
+    int media = (Pin[i] + Pin[i + 1] + Pin[1 + 2]) / 3;
+    Pout[i] = Pout[i + 1] = Pout[i + 2] = media;
+    if (channels == 4) Pout[i+3] = Pin[i+3];
+    //}
 }
+
+void serialeBw(unsigned char *Pout, unsigned char *Pin, int width, int height, int channels)
+{
+
+    //int i = blockDim.x * blockIdx.x + threadIdx.x;
+//
+    //int size = width * height * channels;
+    //// for (int i = 0; i < size; i+=channels){
+    //int media = (Pin[i] + Pin[i + 1] + Pin[1 + 2]) / 3;
+    //Pout[i] = Pout[i + 1] = Pout[i + 2] = media;
+    ////}
+    //stbi_write_png("image_bw.png", width, height, channels, Pout, width * channels);
+}
+
 struct Pixel
 {
     unsigned char r, g, b, a;
@@ -64,30 +71,30 @@ void convertImageToGrayCPU(unsigned char *rgb_image, int width, int height)
 
 int main()
 {
-    int width = 100, height = 100, bpp;
+    int width, height, channel;
 
     unsigned char *bw_image;
     unsigned char *rgb_image;
     unsigned char *cpu_rgb_image;
-
-    int size = width * height * sizeof(unsigned char) * CHANNEL_NUM;
-    // cudaMallocManaged(&rgb_image, size);
+    cpu_rgb_image = stbi_load("godrick.jpg", &width, &height, &channel, 0);
+    int size = width * height * sizeof(unsigned char) * channel;
     cout << "Alloco la memoria necessaria \n";
     cudaMalloc(&rgb_image, size);
-    cudaMalloc(&cpu_rgb_image, size);
     cudaMallocManaged(&bw_image, size);
-    cpu_rgb_image = stbi_load("image.png", &width, &height, &bpp, 3);
     int block_size = 32;
-    int number_of_blocks = (width * height * CHANNEL_NUM) / block_size;
+    int number_of_blocks = ceil((width * height * channel) / block_size);
     cout << "Copio sulla GPU \n";
     cudaMemcpy(rgb_image, cpu_rgb_image, size, cudaMemcpyHostToDevice);
+    cudaDeviceSynchronize();
     cout << "Chiamo la funzione kernel \n";
-    colorToGrey<<<number_of_blocks, block_size>>>(bw_image, rgb_image, width, height);
+    cout << width << " " << height << " " << channel << endl;
+    colorToGrey<<<number_of_blocks, block_size>>>(bw_image, rgb_image, width, height, channel);
     cudaDeviceSynchronize();
     cout << "Controllo gli errori \n";
     cout << "Copio sulla CPU\n";
     checkCudaError();
-    stbi_write_png("image_bw.png", width, height, CHANNEL_NUM, bw_image, width * CHANNEL_NUM);
+    // serialeBw(bw_image, cpu_rgb_image, width, height, channel);
+    stbi_write_png("image_bw.png", width, height, channel, bw_image, width * channel);
     cout << "Libero tutto \n";
     cudaFree(bw_image);
     cudaFree(rgb_image);
