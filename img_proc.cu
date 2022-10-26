@@ -1,12 +1,12 @@
 #include <stdint.h>
 #include <iostream>
-
+#include <string>
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define CHANNEL_NUM 3
 
-#include "stb_image.h"
-#include "stb_image_write.h"
+#include "./libs/stb_image.h"
+#include "./libs/stb_image_write.h"
 
 using namespace std;
 
@@ -17,11 +17,14 @@ __global__ void colorToGrey(unsigned char *Pout, unsigned char *Pin, int width,
     int i = blockDim.x * blockIdx.x + threadIdx.x;
 
     int size = width * height * channels;
-    // for (int i = 0; i < size; i+=channels){
-    int media = (Pin[i] + Pin[i + 1] + Pin[1 + 2]) / 3;
-    Pout[i] = Pout[i + 1] = Pout[i + 2] = media;
-    if (channels == 4) Pout[i+3] = Pin[i+3];
-    //}
+    if(channels == 3){
+        int media = (Pin[i] + Pin[i + 1] + Pin[i+2]) / 3;
+        Pout[i] = Pout[i + 1] = Pout[i + 2] = media;
+    }
+    else{
+        int media = (Pin[i] + Pin[i + 1] + Pin[i+2]+ Pin[i+3]) / 4;
+        Pout[i] = Pout[i + 1] = Pout[i + 2] = Pout[i+3] = media;
+    }
 }
 
 void serialeBw(unsigned char *Pout, unsigned char *Pin, int width, int height, int channels)
@@ -69,14 +72,22 @@ void convertImageToGrayCPU(unsigned char *rgb_image, int width, int height)
     }
 }
 
-int main()
+int main(int argc, char** argv)
 {
     int width, height, channel;
 
     unsigned char *bw_image;
     unsigned char *rgb_image;
     unsigned char *cpu_rgb_image;
-    cpu_rgb_image = stbi_load("godrick.jpg", &width, &height, &channel, 0);
+
+    const char* input_name = argv[1];
+    const char* output_name = argv[2];
+
+    if (argc != 3){
+        cout << "There was an error. Insert the correct number of arguments" << endl;
+        exit(EXIT_FAILURE);
+    }
+    cpu_rgb_image = stbi_load(input_name, &width, &height, &channel, 0);
     int size = width * height * sizeof(unsigned char) * channel;
     cout << "Alloco la memoria necessaria \n";
     cudaMalloc(&rgb_image, size);
@@ -91,10 +102,10 @@ int main()
     colorToGrey<<<number_of_blocks, block_size>>>(bw_image, rgb_image, width, height, channel);
     cudaDeviceSynchronize();
     cout << "Controllo gli errori \n";
-    cout << "Copio sulla CPU\n";
     checkCudaError();
+    cout << "Scrivo l'immagine \n";
     // serialeBw(bw_image, cpu_rgb_image, width, height, channel);
-    stbi_write_png("image_bw.png", width, height, channel, bw_image, width * channel);
+    stbi_write_jpg(output_name, width, height, channel, bw_image, 100);
     cout << "Libero tutto \n";
     cudaFree(bw_image);
     cudaFree(rgb_image);
