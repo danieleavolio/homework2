@@ -25,7 +25,6 @@ void checkCudaError()
     512 *
 
 */
-
 __global__ void sharpenConvolution(unsigned char *Pout, unsigned char *Pin, int w,
                                    int h, int channels)
 {
@@ -61,10 +60,29 @@ __global__ void sharpenConvolution(unsigned char *Pout, unsigned char *Pin, int 
             }
         }
 
+        if (r < 0)
+            r = 0;
+        if (r > 255)
+            r = 255;
+        if (g < 0)
+            g = 0;
+        if (g > 255)
+            g = 255;
+
+        if (b < 0)
+            b = 0;
+        if (b > 255)
+            b = 255;
+        if (a < 0)
+            a = 0;
+        if (a > 255)
+            a = 255;
+
         // printf("%d %d %d %d \n",r,g,b,a);
         Pout[Pout_offset * channels + 0] = r;
         Pout[Pout_offset * channels + 1] = g;
         Pout[Pout_offset * channels + 2] = b;
+
         if (channels == 4)
             Pout[Pout_offset * channels + 3] = a;
     }
@@ -83,19 +101,23 @@ int main(int argc, char **argv)
 
     if (argc != 3)
     {
+        printf("Usage: ./convolution <image_path> <output_path> \r \n");
         cout << "There was an error. Insert the correct number of arguments" << endl;
         exit(EXIT_FAILURE);
     }
+
     cpu_rgb_image = stbi_load(input_name, &width, &height, &channel, 0);
+    dim3 block_size(32, 32);
+    dim3 number_of_blocks(ceil(width / block_size.x+1), ceil(height / block_size.y+1));
+
     int size = width * height * sizeof(unsigned char) * channel;
     cout << "Alloco la memoria necessaria \n";
     cudaMallocManaged(&conv_image, size);
-    cudaMallocManaged(&rgb_image, size);
-    dim3 block_size(32, 32);
-    dim3 number_of_blocks(ceil(width / block_size.x), ceil(height / block_size.y));
-    cout << "Copio sulla GPU \n";
+    cudaMalloc(&rgb_image, size);
+
     cudaMemcpy(rgb_image, cpu_rgb_image, size, cudaMemcpyHostToDevice);
     cudaDeviceSynchronize();
+
     cout << "Chiamo la funzione kernel \n";
     cout << width << " " << height << " " << channel << endl;
     sharpenConvolution<<<number_of_blocks, block_size>>>(conv_image, rgb_image, width, height, channel);
